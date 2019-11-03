@@ -31,6 +31,7 @@ from libcst.metadata import PositionProvider
 
 class Modernizer(m.MatcherDecoratableTransformer):
     METADATA_DEPENDENCIES = (PositionProvider,)
+    # FIXME use a stack of e.g. SimpleStatementLine then proper visit_Import/ImportFrom to store the ssl node
 
     def __init__(self, path: Path):
         super().__init__()
