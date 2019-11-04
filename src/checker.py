@@ -1,6 +1,17 @@
 from pathlib import Path
+from typing import List, Tuple, Optional
 
-from libcst import Attribute, BinaryOperation, ImportAlias, matchers as m
+from libcst import (
+    Attribute,
+    BinaryOperation,
+    ClassDef,
+    FunctionDef,
+    ImportAlias,
+    matchers as m,
+    Call,
+    ensure_type,
+    Name,
+)
 from libcst.metadata import PositionProvider
 
 
@@ -12,6 +23,7 @@ class Checker(m.MatcherDecoratableVisitor):
         self.path = path
         self.future_division = False
         self.errors = False
+        self.stack: List[str] = []
 
     @m.call_if_inside(m.ImportFrom(module=m.Name("__future__")))
     @m.visit(m.ImportAlias(name=m.Name("division")))
@@ -32,3 +44,27 @@ class Checker(m.MatcherDecoratableVisitor):
         pos = self.get_metadata(PositionProvider, node).start
         print(f"{self.path}:{pos.line}:{pos.column}: use of sys.maxint")
         self.errors = True
+
+    def visit_ClassDef(self, node: ClassDef) -> None:
+        self.stack.append(node.name.value)
+
+    def leave_ClassDef(self, node: ClassDef) -> None:
+        self.stack.pop()
+
+    def visit_FunctionDef(self, node: FunctionDef) -> None:
+        self.stack.append(node.name.value)
+
+    def leave_FunctionDef(self, node: FunctionDef) -> None:
+        self.stack.pop()
+
+    def visit_ClassDef_bases(self, node: "ClassDef") -> None:
+        return
+
+    def visit_Call(self, node: Call) -> Optional[bool]:
+        if m.matches(node.func, m.Attribute()):  # method call
+            name = ensure_type(node.func, Attribute).attr.value
+            if name == "assertEquals":
+                pos = self.get_metadata(PositionProvider, node).start
+                print(f"{self.path}:{pos.line}:{pos.column}: use of assertEquals")
+                self.errors = True
+        return None
