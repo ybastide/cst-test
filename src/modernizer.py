@@ -255,7 +255,14 @@ class Modernizer(m.MatcherDecoratableTransformer):
             self.builtins_new_imports.add(func_name)
 
     @m.call_if_not_inside(
-        m.Call(func=m.Name("list") | m.Attribute(attr=m.Name("join"))) | m.CompFor()
+        m.Call(
+            func=m.Name("list")
+            | m.Name("set")
+            | m.Name("tuple")
+            | m.Attribute(attr=m.Name("join"))
+        )
+        | m.CompFor()
+        | m.For()
     )
     @m.leave(map_matcher)
     def fix_map(self, original_node: Call, updated_node: Call) -> BaseExpression:
@@ -303,7 +310,14 @@ class Modernizer(m.MatcherDecoratableTransformer):
     )
 
     @m.call_if_not_inside(
-        m.Call(func=m.Name("list") | m.Attribute(attr=m.Name("join"))) | m.CompFor()
+        m.Call(
+            func=m.Name("list")
+            | m.Name("set")
+            | m.Name("tuple")
+            | m.Attribute(attr=m.Name("join"))
+        )
+        | m.CompFor()
+        | m.For()
     )
     @m.leave(not_iter_matcher)
     def fix_not_iter(self, original_node: Call, updated_node: Call) -> BaseExpression:

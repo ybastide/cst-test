@@ -1,15 +1,15 @@
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from libcst import (
     Attribute,
     BinaryOperation,
+    Call,
     ClassDef,
     FunctionDef,
     ImportAlias,
-    matchers as m,
-    Call,
     ensure_type,
+    matchers as m,
 )
 from libcst.metadata import PositionProvider
 
