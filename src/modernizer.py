@@ -33,9 +33,13 @@ class Modernizer(m.MatcherDecoratableTransformer):
     METADATA_DEPENDENCIES = (PositionProvider,)
     # FIXME use a stack of e.g. SimpleStatementLine then proper visit_Import/ImportFrom to store the ssl node
 
-    def __init__(self, path: Path):
+    def __init__(
+        self, path: Path, verbose: bool = False, ignored: Optional[List[str]] = None
+    ):
         super().__init__()
         self.path = path
+        self.verbose = verbose
+        self.ignored = set(ignored or [])
         self.errors = False
         self.stack: List[Tuple[str, ...]] = []
         self.annotations: Dict[
@@ -148,10 +152,11 @@ class Modernizer(m.MatcherDecoratableTransformer):
 
         v = Visitor()
         node.visit(v)
-        pos = self.get_metadata(PositionProvider, node).start
-        print(
-            f"{self.path}:{pos.line}:{pos.column}: parameter {node.name.value}: {v.ptype or 'unknown type'}"
-        )
+        if self.verbose:
+            pos = self.get_metadata(PositionProvider, node).start
+            print(
+                f"{self.path}:{pos.line}:{pos.column}: parameter {node.name.value}: {v.ptype or 'unknown type'}"
+            )
         return None
 
     @m.visit(m.SimpleStatementLine())
@@ -165,15 +170,28 @@ class Modernizer(m.MatcherDecoratableTransformer):
                 lambda n: n.trailing_whitespace.comment
                 and "type:" in n.trailing_whitespace.comment.value
             ):
-                mo = re.match(
-                    r"#\s*type:\s*(\S*)", node.trailing_whitespace.comment.value
-                )
-                vtype = mo.group(1) if mo else None
+
+                class TypingVisitor(m.MatcherDecoratableVisitor):
+                    def __init__(self):
+                        super().__init__()
+                        self.vtype = None
+
+                    def visit_TrailingWhitespace_comment(
+                        self, node: "TrailingWhitespace"
+                    ) -> None:
+                        if node.comment:
+                            mo = re.match(r"#\s*type:\s*(\S*)", node.comment.value)
+                            if mo:
+                                vtype = mo.group(1)
+                        return None
+
+                tv = TypingVisitor()
+                node.visit(tv)
+                vtype = tv.vtype
             else:
                 vtype = None
-            pos = self.get_metadata(PositionProvider, node).start
 
-            class Visitor(m.MatcherDecoratableVisitor):
+            class NameVisitor(m.MatcherDecoratableVisitor):
                 def __init__(self):
                     super().__init__()
                     self.names: List[str] = []
@@ -182,13 +200,15 @@ class Modernizer(m.MatcherDecoratableTransformer):
                     self.names.append(node.value)
                     return None
 
-            for target in assign.targets:
-                v = Visitor()
-                target.visit(v)
-                for name in v.names:
-                    print(
-                        f"{self.path}:{pos.line}:{pos.column}: variable {name}: {vtype or 'unknown type'}"
-                    )
+            if self.verbose:
+                pos = self.get_metadata(PositionProvider, node).start
+                for target in assign.targets:
+                    v = NameVisitor()
+                    target.visit(v)
+                    for name in v.names:
+                        print(
+                            f"{self.path}:{pos.line}:{pos.column}: variable {name}: {vtype or 'unknown type'}"
+                        )
 
     def visit_FunctionDef_body(self, node: FunctionDef) -> None:
         class Visitor(m.MatcherDecoratableVisitor):
@@ -228,16 +248,19 @@ class Modernizer(m.MatcherDecoratableTransformer):
         func=m.Name("filter") | m.Name("map") | m.Name("zip") | m.Name("range")
     )
 
-    @m.call_if_not_inside(m.Call(func=m.Name("list")))
     @m.visit(map_matcher)
     def visit_map(self, node: Call) -> None:
         func_name = ensure_type(node.func, Name).value
         if func_name not in self.builtins_imports:
             self.builtins_new_imports.add(func_name)
 
-    @m.call_if_not_inside(m.Call(func=m.Name("list")))
+    @m.call_if_not_inside(
+        m.Call(func=m.Name("list") | m.Attribute(attr=m.Name("join"))) | m.CompFor()
+    )
     @m.leave(map_matcher)
     def fix_map(self, original_node: Call, updated_node: Call) -> BaseExpression:
+        # TODO test with CompFor etc.
+        # TODO improve join test
         func_name = ensure_type(updated_node.func, Name).value
         if func_name not in self.builtins_imports:
             updated_node = Call(func=Name("list"), args=[Arg(updated_node)])
@@ -276,7 +299,9 @@ class Modernizer(m.MatcherDecoratableTransformer):
         func=m.Attribute(attr=m.Name("keys") | m.Name("values") | m.Name("items"))
     )
 
-    @m.call_if_not_inside(m.Call(func=m.Name("list")))
+    @m.call_if_not_inside(
+        m.Call(func=m.Name("list") | m.Attribute(attr=m.Name("join"))) | m.CompFor()
+    )
     @m.leave(not_iter_matcher)
     def fix_not_iter(self, original_node: Call, updated_node: Call) -> BaseExpression:
         updated_node = Call(func=Name("list"), args=[Arg(updated_node)])
@@ -298,6 +323,7 @@ class Modernizer(m.MatcherDecoratableTransformer):
             self.builtins_updated_node,
             self.builtins_imports,
             self.builtins_new_imports,
+            True,
         )
         updated_node = self.update_imports(
             original_node,
@@ -306,6 +332,7 @@ class Modernizer(m.MatcherDecoratableTransformer):
             self.future_utils_updated_node,
             self.future_utils_imports,
             self.future_utils_new_imports,
+            False,
         )
         return updated_node
 
@@ -317,9 +344,11 @@ class Modernizer(m.MatcherDecoratableTransformer):
         updated_import_node: SimpleStatementLine,
         current_imports: Dict[str, str],
         new_imports: Set[str],
+        noqa: bool,
     ) -> Module:
         if not new_imports:
             return updated_module
+        noqa_comment = "  # noqa" if noqa else ""
         if not updated_import_node:
             i = -1
             blank_lines = "\n\n"
@@ -331,7 +360,7 @@ class Modernizer(m.MatcherDecoratableTransformer):
                     if original is self.last_import_node_stmt:
                         break
             stmt = parse_module(
-                f"from {import_name} import {', '.join(sorted(new_imports))}\n{blank_lines}",
+                f"from {import_name} import {', '.join(sorted(new_imports))}{noqa_comment}\n{blank_lines}",
                 config=updated_module.config_for_parsing,
             )
             body = list(updated_module.body)
@@ -346,7 +375,7 @@ class Modernizer(m.MatcherDecoratableTransformer):
                     for k, v in current_imports.items()
                 }
                 stmt = parse_statement(
-                    f"from {import_name} import {', '.join(sorted(new_imports | current_imports_set))}"
+                    f"from {import_name} import {', '.join(sorted(new_imports | current_imports_set))}{noqa_comment}"
                 )
                 return updated_module.deep_replace(updated_import_node, stmt)
                 # for i, (original, updated) in enumerate(

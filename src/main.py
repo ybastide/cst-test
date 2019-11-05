@@ -57,7 +57,7 @@ def main() -> Optional[int]:
             if args.exitfirst:
                 return 1
             errors = True
-        modernizer = Modernizer(path)
+        modernizer = Modernizer(path, args.verbose, args.ignore)
         modified_tree = wrapper.visit(modernizer)
         if modernizer.errors:
             if args.exitfirst:
