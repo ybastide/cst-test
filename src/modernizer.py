@@ -115,12 +115,30 @@ class Modernizer(m.MatcherDecoratableTransformer):
     #     self.last_import_node = node
     #     return None
 
-    @m.call_if_not_inside(m.BaseCompoundStatement())
+    @m.call_if_not_inside(m.ClassDef() | m.FunctionDef() | m.If())
     def visit_SimpleStatementLine(self, node: SimpleStatementLine) -> Optional[bool]:
         for n in node.body:
             if m.matches(n, m.Import() | m.ImportFrom()):
                 self.last_import_node_stmt = node
         return None
+
+    @m.call_if_not_inside(m.ClassDef() | m.FunctionDef() | m.If())
+    def leave_SimpleStatementLine(
+        self, original_node: SimpleStatementLine, updated_node: SimpleStatementLine
+    ) -> Union[BaseStatement, RemovalSentinel]:
+        for n in updated_node.body:
+            if m.matches(n, m.ImportFrom(module=m.Name("__future__"))):
+                self.python_future_updated_node = updated_node
+            elif m.matches(n, m.ImportFrom(module=m.Name("builtins"))):
+                self.builtins_updated_node = updated_node
+            elif m.matches(
+                n,
+                m.ImportFrom(
+                    module=m.Attribute(value=m.Name("future"), attr=m.Name("utils"))
+                ),
+            ):
+                self.future_utils_updated_node = updated_node
+        return updated_node
 
     # @m.visit(
     #     m.AllOf(
@@ -225,24 +243,6 @@ class Modernizer(m.MatcherDecoratableTransformer):
         v = Visitor()
         node.visit(v)
         return None
-
-    @m.call_if_not_inside(m.BaseCompoundStatement())
-    def leave_SimpleStatementLine(
-        self, original_node: SimpleStatementLine, updated_node: SimpleStatementLine
-    ) -> Union[BaseStatement, RemovalSentinel]:
-        for n in updated_node.body:
-            if m.matches(n, m.ImportFrom(module=m.Name("__future__"))):
-                self.python_future_updated_node = updated_node
-            elif m.matches(n, m.ImportFrom(module=m.Name("builtins"))):
-                self.builtins_updated_node = updated_node
-            elif m.matches(
-                n,
-                m.ImportFrom(
-                    module=m.Attribute(value=m.Name("future"), attr=m.Name("utils"))
-                ),
-            ):
-                self.future_utils_updated_node = updated_node
-        return updated_node
 
     map_matcher = m.Call(
         func=m.Name("filter") | m.Name("map") | m.Name("zip") | m.Name("range")
