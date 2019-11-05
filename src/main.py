@@ -39,6 +39,7 @@ def main() -> Optional[int]:
         action="store_true",
         help="exit instantly on first error or failed test.",
     )
+    parser.add_argument("--ignore", nargs="*", help="errors to ignore.")
     args = parser.parse_args()
     paths = expand_paths([Path(name).expanduser() for name in args.file])
     errors = False
@@ -50,7 +51,7 @@ def main() -> Optional[int]:
         py_source = path.read_text()
         module = cst.parse_module(py_source)
         wrapper = cst.MetadataWrapper(module)
-        checker = Checker(path)
+        checker = Checker(path, args.verbose, args.ignore)
         wrapper.visit(checker)
         if checker.errors:
             if args.exitfirst:

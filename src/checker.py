@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional, Set
 
 from libcst import (
     Attribute,
@@ -10,7 +10,6 @@ from libcst import (
     matchers as m,
     Call,
     ensure_type,
-    Name,
 )
 from libcst.metadata import PositionProvider
 
@@ -18,9 +17,13 @@ from libcst.metadata import PositionProvider
 class Checker(m.MatcherDecoratableVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
-    def __init__(self, path: Path):
+    def __init__(
+        self, path: Path, verbose: bool = False, ignored: Optional[List[str]] = None
+    ):
         super().__init__()
         self.path = path
+        self.verbose = verbose
+        self.ignored = set(ignored or [])
         self.future_division = False
         self.errors = False
         self.stack: List[str] = []
@@ -32,6 +35,8 @@ class Checker(m.MatcherDecoratableVisitor):
 
     @m.visit(m.BinaryOperation(operator=m.Divide()))
     def check_div(self, node: BinaryOperation) -> None:
+        if "division" in self.ignored:
+            return
         if not self.future_division:
             pos = self.get_metadata(PositionProvider, node).start
             print(
@@ -41,6 +46,8 @@ class Checker(m.MatcherDecoratableVisitor):
 
     @m.visit(m.Attribute(attr=m.Name("maxint"), value=m.Name("sys")))
     def check_maxint(self, node: Attribute) -> None:
+        if "sys.maxint" in self.ignored:
+            return
         pos = self.get_metadata(PositionProvider, node).start
         print(f"{self.path}:{pos.line}:{pos.column}: use of sys.maxint")
         self.errors = True
@@ -60,11 +67,15 @@ class Checker(m.MatcherDecoratableVisitor):
     def visit_ClassDef_bases(self, node: "ClassDef") -> None:
         return
 
-    def visit_Call(self, node: Call) -> Optional[bool]:
-        if m.matches(node.func, m.Attribute()):  # method call
-            name = ensure_type(node.func, Attribute).attr.value
-            if name == "assertEquals":
-                pos = self.get_metadata(PositionProvider, node).start
-                print(f"{self.path}:{pos.line}:{pos.column}: use of assertEquals")
-                self.errors = True
-        return None
+    @m.visit(
+        m.Call(
+            func=m.Attribute(attr=m.Name("assertEquals") | m.Name("assertItemsEqual"))
+        )
+    )
+    def visit_old_assert(self, node: Call) -> None:
+        name = ensure_type(node.func, Attribute).attr.value
+        if name in self.ignored:
+            return
+        pos = self.get_metadata(PositionProvider, node).start
+        print(f"{self.path}:{pos.line}:{pos.column}: use of {name}")
+        self.errors = True
