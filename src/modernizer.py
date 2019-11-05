@@ -266,15 +266,18 @@ class Modernizer(m.MatcherDecoratableTransformer):
             updated_node = Call(func=Name("list"), args=[Arg(updated_node)])
         return updated_node
 
-    @m.visit(m.Call(func=m.Name("xrange")))
+    @m.visit(m.Call(func=m.Name("xrange") | m.Name("raw_input")))
     def visit_xrange(self, node: Call) -> None:
-        func_name = "range"
+        orig_func_name = ensure_type(node.func, Name).value
+        func_name = "range" if orig_func_name == "xrange" else "input"
         if func_name not in self.builtins_imports:
             self.builtins_new_imports.add(func_name)
 
-    @m.leave(m.Call(func=m.Name("xrange")))
+    @m.leave(m.Call(func=m.Name("xrange") | m.Name("raw_input")))
     def fix_xrange(self, original_node: Call, updated_node: Call) -> BaseExpression:
-        return updated_node.with_changes(func=Name("range"))
+        orig_func_name = ensure_type(updated_node.func, Name).value
+        func_name = "range" if orig_func_name == "xrange" else "input"
+        return updated_node.with_changes(func=Name(func_name))
 
     iter_matcher = m.Call(
         func=m.Attribute(
