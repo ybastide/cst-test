@@ -4,12 +4,38 @@
 #
 #    pip-compile
 #
-libcst==0.3.3             # via -r requirements.in, pyre-check
-mypy-extensions==0.4.3    # via -r requirements.in, typing-inspect
-psutil==5.7.0             # via -r requirements.in, pyre-check
-pyre-check==0.0.41        # via -r requirements.in
-pyre-extensions==0.0.17   # via -r requirements.in, pyre-check
-pywatchman==1.4.1         # via -r requirements.in, pyre-check
-pyyaml==5.3               # via libcst
-typing-extensions==3.7.4.1  # via -r requirements.in, libcst, pyre-extensions, typing-inspect
-typing-inspect==0.5.0     # via -r requirements.in, libcst, pyre-extensions
+libcst==0.3.3
+    # via
+    #   -r requirements.in
+    #   pyre-check
+mypy-extensions==0.4.3
+    # via
+    #   -r requirements.in
+    #   typing-inspect
+psutil==5.7.0
+    # via
+    #   -r requirements.in
+    #   pyre-check
+pyre-check==0.0.41
+    # via -r requirements.in
+pyre-extensions==0.0.17
+    # via
+    #   -r requirements.in
+    #   pyre-check
+pywatchman==1.4.1
+    # via
+    #   -r requirements.in
+    #   pyre-check
+pyyaml==5.4
+    # via libcst
+typing-extensions==3.7.4.1
+    # via
+    #   -r requirements.in
+    #   libcst
+    #   pyre-extensions
+    #   typing-inspect
+typing-inspect==0.5.0
+    # via
+    #   -r requirements.in
+    #   libcst
+    #   pyre-extensions
